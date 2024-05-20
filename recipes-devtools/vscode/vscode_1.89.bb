@@ -1,7 +1,7 @@
 DESCRIPTION = "Packaging for prebuilt versions of vscode"
 HOMEPAGE = "https://code.visualstudio.com/download"
-LICENSE = "CUSTOM"
-LIC_FILES_CHKSUM = "file://LICENSE;md5=254392426853a1dff30e73de3f901347"
+LICENSE = "Apache-2.0"
+LIC_FILES_CHKSUM = "file://LICENSES.chromium.html;md5=c590e5227ea914c9a4187d5b1cbefe93"
 
 inherit bin_package allarch
 
