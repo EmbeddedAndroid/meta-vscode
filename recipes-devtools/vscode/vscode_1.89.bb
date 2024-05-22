@@ -10,9 +10,9 @@ SRC_URI = "https://vscode.download.prss.microsoft.com/dbazure/download/stable/${
 SRC_URI[md5sum] = "c71bd32ab70f5615621e61c548be9e4c"
 
 do_install() {
-    install -d ${D}/opt/vscode
-    cp -r ${WORKDIR}/VSCode-linux-arm64/* ${D}/opt/vscode
+    install -d ${D}/usr/share/vscode
+    cp -r ${WORKDIR}/VSCode-linux-arm64/* ${D}/usr/share/vscode
 }
 
-FILES_${PN} = "/opt/*"
-INSANE_SKIP:${PN} += "already-stripped file-rdeps ldflags"
+FILES_${PN} = "/usr/share/vscode/*"
+INSANE_SKIP:${PN} += "already-stripped file-rdeps ldflags libdir"
