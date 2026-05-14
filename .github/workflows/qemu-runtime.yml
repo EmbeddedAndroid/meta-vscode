@@ -119,8 +119,10 @@ jobs:
           IMAGE_FEATURES:append = " ssh-server-openssh debug-tweaks"
 
           # Wire up testimage. Empty root password (debug-tweaks) lets
-          # OEQA ssh in as root with no key dance.
-          INHERIT += "testimage"
+          # OEQA ssh in as root with no key dance. testimage is added
+          # via IMAGE_CLASSES so it only inherits on image recipes
+          # (where it belongs), not on every recipe.
+          IMAGE_CLASSES += "testimage"
           TEST_TARGET = "qemu"
           TEST_SUITES = "ping ssh vscode_launcher"
           TESTIMAGE_AUTO = "1"
