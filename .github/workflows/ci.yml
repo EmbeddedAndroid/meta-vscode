@@ -103,7 +103,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        release: [whinlatter, wrynose]
         machine: [qemux86-64, qemuarm64, qemuarm]
+        # include adds the bitbake-version axis as a value-mapping
+        # against an existing matrix axis (release); GHA pairs the
+        # extra key (bitbake) with each existing combo that shares the
+        # release value.
         include:
           - release: whinlatter
             bitbake: '2.16'
