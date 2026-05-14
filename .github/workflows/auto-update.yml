@@ -1,0 +1,224 @@
+name: auto-update
+
+# Daily check against Microsoft's stable channel for a new VSCode
+# release. If the SHA on the latest-redirect doesn't match what the
+# recipe pins, open a PR that bumps the recipe (per-arch SRCREVs,
+# tarball timestamps, sha256 checksums, and the LICENSES.chromium.html
+# md5) and renames the file to vscode_<new-version>.bb.
+#
+# The PR is left for human review before merging -- automated bumps
+# of opaque binary blobs are exactly the case where a human eye on
+# the diff is valuable.
+
+on:
+  schedule:
+    # 10:42 UTC daily. Microsoft typically publishes stable releases
+    # mid-month around 17:00-22:00 UTC; a morning-UTC poll picks them
+    # up the next day reliably without piling on right after release.
+    - cron: '42 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history so we can detect whether an auto-update
+          # branch with the new version already exists.
+          fetch-depth: 0
+
+      - name: Resolve Microsoft's latest stable URLs
+        id: resolve
+        run: |
+          set -eo pipefail
+          for arch in x64 arm64 armhf; do
+              url=$(curl -sLI "https://update.code.visualstudio.com/latest/linux-$arch/stable" \
+                    | awk 'BEGIN{IGNORECASE=1} /^location:/{print $2}' \
+                    | tr -d '\r' | tail -1)
+              if [ -z "$url" ]; then
+                  echo "::error::failed to resolve URL for $arch"
+                  exit 1
+              fi
+              # URL pattern: .../stable/<sha>/code-stable-<arch>-<timestamp>.tar.gz
+              sha=$(echo "$url" | awk -F/ '{print $(NF-1)}')
+              ts=$(echo "$url"  | awk -F/ '{print $NF}' | sed -E "s/code-stable-${arch}-([0-9]+)\.tar\.gz/\1/")
+              echo "$arch url: $url"
+              echo "$arch sha: $sha"
+              echo "$arch ts:  $ts"
+              echo "url_$arch=$url"  >> "$GITHUB_OUTPUT"
+              echo "sha_$arch=$sha"  >> "$GITHUB_OUTPUT"
+              echo "ts_$arch=$ts"    >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Read current recipe state
+        id: current
+        run: |
+          set -eo pipefail
+          recipe=$(ls recipes-devtools/vscode/vscode_*.bb)
+          ver=$(basename "$recipe" .bb | sed 's/^vscode_//')
+          cur_sha=$(awk -F'"' '/^GIT_SHA[[:space:]]*=/ { print $2; exit }' "$recipe")
+          echo "recipe=$recipe"   >> "$GITHUB_OUTPUT"
+          echo "version=$ver"     >> "$GITHUB_OUTPUT"
+          echo "git_sha=$cur_sha" >> "$GITHUB_OUTPUT"
+          echo "Current: $recipe / version=$ver / GIT_SHA=$cur_sha"
+
+      - name: Skip if upstream SHA matches current recipe
+        id: gate
+        run: |
+          set -eo pipefail
+          # All three arches publish in lockstep under the same SHA;
+          # if any of them diverge the recipe layout doesn't support
+          # it anyway, so use x64 as the canonical signal.
+          if [ "${{ steps.resolve.outputs.sha_x64 }}" = "${{ steps.current.outputs.git_sha }}" ]; then
+              echo "Already at latest stable SHA ${{ steps.current.outputs.git_sha }}; nothing to do."
+              echo "needs_update=false" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+          echo "Upstream has new SHA: ${{ steps.resolve.outputs.sha_x64 }} (recipe pins ${{ steps.current.outputs.git_sha }})"
+          echo "needs_update=true" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch tarballs and compute checksums + license md5
+        if: steps.gate.outputs.needs_update == 'true'
+        id: checksums
+        run: |
+          set -eo pipefail
+          mkdir -p /tmp/vscode-tarballs
+          for arch in x64 arm64 armhf; do
+              url_var="url_$arch"
+              url="${{ steps.resolve.outputs.url_x64 }}"
+              # Re-resolve per-arch URL via output (matrix-style)
+              case $arch in
+                  x64)   url="${{ steps.resolve.outputs.url_x64 }}"   ;;
+                  arm64) url="${{ steps.resolve.outputs.url_arm64 }}" ;;
+                  armhf) url="${{ steps.resolve.outputs.url_armhf }}" ;;
+              esac
+              echo "Downloading $arch from $url"
+              curl -sLo "/tmp/vscode-tarballs/$arch.tgz" "$url"
+              sum=$(sha256sum "/tmp/vscode-tarballs/$arch.tgz" | cut -d' ' -f1)
+              echo "sha256_$arch=$sum" >> "$GITHUB_OUTPUT"
+              echo "$arch: $sum"
+          done
+
+          # All three tarballs ship the same LICENSES.chromium.html;
+          # extract from x64 (cheapest) and md5 it.
+          mkdir -p /tmp/vscode-extract
+          tar xzf /tmp/vscode-tarballs/x64.tgz -C /tmp/vscode-extract \
+              VSCode-linux-x64/LICENSES.chromium.html
+          lic_md5=$(md5sum /tmp/vscode-extract/VSCode-linux-x64/LICENSES.chromium.html \
+                    | cut -d' ' -f1)
+          echo "license_md5=$lic_md5" >> "$GITHUB_OUTPUT"
+          echo "LICENSES.chromium.html md5: $lic_md5"
+
+      - name: Discover new version string
+        if: steps.gate.outputs.needs_update == 'true'
+        id: version
+        run: |
+          set -eo pipefail
+          # Microsoft's `/api/update/.../stable/VERSION/.../release-notes` is one
+          # source of the human-readable version. Simpler: parse the binary's
+          # ProductDevelopment from package.json inside the tarball.
+          mkdir -p /tmp/vscode-extract-meta
+          tar xzf /tmp/vscode-tarballs/x64.tgz -C /tmp/vscode-extract-meta \
+              VSCode-linux-x64/resources/app/package.json
+          ver=$(python3 -c "import json; print(json.load(open('/tmp/vscode-extract-meta/VSCode-linux-x64/resources/app/package.json'))['version'])")
+          echo "Detected version: $ver"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Bail if a branch for this version already exists
+        if: steps.gate.outputs.needs_update == 'true'
+        id: branch_check
+        run: |
+          set -eo pipefail
+          branch="auto-update/vscode-${{ steps.version.outputs.version }}"
+          if git ls-remote --heads origin "$branch" | grep -q "$branch"; then
+              echo "::warning::branch $branch already exists upstream; skipping (assume PR already pending)"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update recipe in-place
+        if: steps.gate.outputs.needs_update == 'true' && steps.branch_check.outputs.skip != 'true'
+        run: |
+          set -eo pipefail
+          old_recipe="${{ steps.current.outputs.recipe }}"
+          new_recipe="recipes-devtools/vscode/vscode_${{ steps.version.outputs.version }}.bb"
+          git mv "$old_recipe" "$new_recipe"
+
+          # In-place value substitutions. Avoid sed -i's BSD/GNU split
+          # by using Python.
+          python3 - <<PYEOF
+          import re, pathlib
+          p = pathlib.Path("$new_recipe")
+          s = p.read_text()
+          subs = [
+              (r'^GIT_SHA = "[^"]*"',
+               'GIT_SHA = "${{ steps.resolve.outputs.sha_x64 }}"'),
+              (r'^TIMESTAMP-x64   = "[^"]*"',
+               'TIMESTAMP-x64   = "${{ steps.resolve.outputs.ts_x64 }}"'),
+              (r'^TIMESTAMP-arm64 = "[^"]*"',
+               'TIMESTAMP-arm64 = "${{ steps.resolve.outputs.ts_arm64 }}"'),
+              (r'^TIMESTAMP-armhf = "[^"]*"',
+               'TIMESTAMP-armhf = "${{ steps.resolve.outputs.ts_armhf }}"'),
+              (r'^SRC_URI\[vscode-x64\.sha256sum\][^=]*=\s*"[^"]*"',
+               'SRC_URI[vscode-x64.sha256sum]   = "${{ steps.checksums.outputs.sha256_x64 }}"'),
+              (r'^SRC_URI\[vscode-arm64\.sha256sum\][^=]*=\s*"[^"]*"',
+               'SRC_URI[vscode-arm64.sha256sum] = "${{ steps.checksums.outputs.sha256_arm64 }}"'),
+              (r'^SRC_URI\[vscode-armhf\.sha256sum\][^=]*=\s*"[^"]*"',
+               'SRC_URI[vscode-armhf.sha256sum] = "${{ steps.checksums.outputs.sha256_armhf }}"'),
+              (r'LICENSES\.chromium\.html;md5=[0-9a-f]+',
+               'LICENSES.chromium.html;md5=${{ steps.checksums.outputs.license_md5 }}'),
+          ]
+          for pat, repl in subs:
+              s, n = re.subn(pat, repl, s, count=1, flags=re.MULTILINE)
+              if n == 0:
+                  raise SystemExit(f"pattern not matched: {pat}")
+          p.write_text(s)
+          PYEOF
+
+          echo "--- diff ---"
+          git diff -- "$new_recipe" || true
+
+      - name: Commit + push branch + open PR
+        if: steps.gate.outputs.needs_update == 'true' && steps.branch_check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="${{ steps.branch_check.outputs.branch }}"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "vscode: bump to ${{ steps.version.outputs.version }}
+
+          Microsoft released VSCode ${{ steps.version.outputs.version }} (SHA
+          ${{ steps.resolve.outputs.sha_x64 }}). Per-arch tarball timestamps:
+            x64   ${{ steps.resolve.outputs.ts_x64 }}
+            arm64 ${{ steps.resolve.outputs.ts_arm64 }}
+            armhf ${{ steps.resolve.outputs.ts_armhf }}
+          sha256 checksums and LICENSES.chromium.html md5 refreshed."
+          git push -u origin "$branch"
+          gh pr create \
+              --base main --head "$branch" \
+              --title "vscode: bump to ${{ steps.version.outputs.version }}" \
+              --body "Automated bump generated by .github/workflows/auto-update.yml.
+
+          Upstream details:
+          - SHA: \`${{ steps.resolve.outputs.sha_x64 }}\`
+          - Version: \`${{ steps.version.outputs.version }}\`
+
+          Per-arch tarballs:
+          - x64:   \`${{ steps.resolve.outputs.url_x64 }}\`
+          - arm64: \`${{ steps.resolve.outputs.url_arm64 }}\`
+          - armhf: \`${{ steps.resolve.outputs.url_armhf }}\`
+
+          sha256 checksums refreshed; LICENSES.chromium.html md5 re-extracted from the new x64 tarball.
+
+          CI will run the multi-arch parse + fetch matrix and the end-to-end scarthgap build. Eyeball the diff before merging since this is a proprietary binary bump."
