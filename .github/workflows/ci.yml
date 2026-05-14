@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main, master]
+    branches: [styhead]
   pull_request:
   workflow_dispatch:
 
@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        poky_branch: [kirkstone, scarthgap, styhead, walnascar]
+        poky_branch: [styhead]
         # MACHINE controls which Microsoft binary tarball the recipe
         # resolves to:
         #   qemux86-64 -> linux-x64
@@ -95,90 +95,8 @@ jobs:
           source oe-init-build-env build
           bitbake -c fetch vscode
 
-  parse-oe-core:
-    # whinlatter and wrynose dropped the combined poky repository, so
-    # we clone openembedded-core + bitbake separately.
-    name: parse (${{ matrix.release }} / ${{ matrix.machine }})
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        release: [whinlatter, wrynose]
-        machine: [qemux86-64, qemuarm64, qemuarm]
-        # include adds the bitbake-version axis as a value-mapping
-        # against an existing matrix axis (release); GHA pairs the
-        # extra key (bitbake) with each existing combo that shares the
-        # release value.
-        include:
-          - release: whinlatter
-            bitbake: '2.16'
-          - release: wrynose
-            bitbake: '2.18'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: meta-vscode
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-                      "$AGENT_TOOLSDIRECTORY"
-
-      - name: Clone oe-core (${{ matrix.release }})
-        run: |
-          git clone --depth 1 --branch ${{ matrix.release }} \
-            https://git.openembedded.org/openembedded-core oe-core
-
-      - name: Clone bitbake (${{ matrix.bitbake }})
-        run: |
-          git clone --depth 1 --branch ${{ matrix.bitbake }} \
-            https://git.openembedded.org/bitbake oe-core/bitbake
-
-      - name: Install Yocto host dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gawk wget git diffstat unzip texinfo gcc build-essential chrpath \
-            socat cpio python3 python3-pip python3-pexpect xz-utils debianutils \
-            iputils-ping python3-git python3-jinja2 python3-subunit zstd liblz4-tool \
-            file locales libacl1
-          sudo locale-gen en_US.UTF-8
-
-      - name: Parse the layer (MACHINE=${{ matrix.machine }})
-        env:
-          LANG: en_US.UTF-8
-          LC_ALL: en_US.UTF-8
-        run: |
-          set -eo pipefail
-          cd oe-core
-          source oe-init-build-env build
-          cat >> conf/local.conf <<EOF
-          MACHINE = "${{ matrix.machine }}"
-          BB_NUMBER_THREADS = "2"
-          PARALLEL_MAKE = "-j 2"
-          CONF_VERSION = "2"
-          EOF
-          bitbake-layers add-layer "$GITHUB_WORKSPACE/meta-vscode"
-          bitbake-layers show-layers
-          bitbake -p
-
-      - name: Fetch vscode (MACHINE=${{ matrix.machine }})
-        env:
-          LANG: en_US.UTF-8
-          LC_ALL: en_US.UTF-8
-        run: |
-          set -eo pipefail
-          cd oe-core
-          source oe-init-build-env build
-          bitbake -c fetch vscode
-
-  # Build vscode end-to-end on the LTS we care most about today
-  # (scarthgap). This catches QA failures (libdir, file-rdeps, etc.)
-  # that bitbake -p doesn't run. Single arch (x86_64) for cost; the
-  # parse matrix above still proves the other arches' URLs resolve.
   build:
-    name: build vscode (scarthgap / qemux86-64)
+    name: build vscode (styhead / qemux86-64)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +110,7 @@ jobs:
                       "$AGENT_TOOLSDIRECTORY"
 
       - name: Clone poky (scarthgap)
-        run: git clone --depth 1 --branch scarthgap https://git.yoctoproject.org/poky poky
+        run: git clone --depth 1 --branch styhead https://git.yoctoproject.org/poky poky
 
       - name: Install Yocto host dependencies
         run: |
