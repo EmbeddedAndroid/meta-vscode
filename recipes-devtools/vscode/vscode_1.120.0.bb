@@ -44,7 +44,13 @@ SRC_URI[vscode-x64.sha256sum]   = "510426eb23d330bf25d84fe88e49a08d965d6b21957b8
 SRC_URI[vscode-arm64.sha256sum] = "69c0d1d0534cd4173e2b3dbee5d001ed5c2bd0c846bb22dca917312b64eb1baf"
 SRC_URI[vscode-armhf.sha256sum] = "1662d3dd08a3602544bc4ca1b091e04d5393a23414607b7c34f0570ebd0d5daa"
 
-S = "${WORKDIR}/VSCode-linux-${VSCODE_ARCH}"
+# Styhead+ introduced UNPACKDIR as the directory do_unpack writes to,
+# distinct from WORKDIR which is reserved for build artefacts. We have
+# to source S from UNPACKDIR on those releases; on kirkstone/scarthgap
+# UNPACKDIR isn't defined, so fall back to WORKDIR. A literal
+# UNPACKDIR = ${WORKDIR} assignment is rejected by bitbake.conf's QA
+# on styhead+, so compute the prefix via Python instead.
+S = "${@(d.getVar('UNPACKDIR') or d.getVar('WORKDIR'))}/VSCode-linux-${VSCODE_ARCH}"
 
 # These are arch-specific prebuilt ELFs, not noarch content; bin_package
 # inherits allarch which is wrong here. Override back to per-machine
