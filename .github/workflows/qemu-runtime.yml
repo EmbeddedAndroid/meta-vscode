@@ -66,12 +66,19 @@ jobs:
           sudo usermod -aG kvm "$USER"
           ls -la /dev/kvm || true
 
-      - name: Cache poky checkout
+      # No restore-keys -- we don't want to fuzzy-match caches from
+      # other workflows in this repo. ci.yml's parse jobs also cache a
+      # poky checkout under poky-scarthgap-v1 with stamps + downloads
+      # baked into poky/build/{tmp,downloads}, which collides with this
+      # workflow's overrides and was the cause of an earlier
+      # "vscode do_fetch skipped, do_unpack can't find tarball" failure.
+      - name: Cache poky + bitbake build state
         uses: actions/cache@v4
         with:
-          path: poky
-          key: poky-scarthgap-runtime-v1
-          restore-keys: poky-scarthgap-
+          path: |
+            poky
+            sstate-cache
+          key: qemu-runtime-poky-scarthgap-${{ hashFiles('meta-vscode/recipes-devtools/vscode/*.bb') }}
 
       - name: Clone poky (scarthgap)
         run: |
@@ -83,26 +90,11 @@ jobs:
             git -C poky checkout -B scarthgap refs/remotes/origin/scarthgap
           fi
 
-      - name: Cache sstate
-        # GHA caches cap at 10 GB. Yocto sstate for a full Weston
-        # image is much larger than that, so we can't cache it whole.
-        # Cache what fits and let cold cells rebuild.
-        uses: actions/cache@v4
-        with:
-          path: sstate-cache
-          key: sstate-scarthgap-weston-${{ hashFiles('meta-vscode/recipes-devtools/vscode/*.bb') }}
-          restore-keys: |
-            sstate-scarthgap-weston-
-            sstate-scarthgap-
-
       - name: Cache downloads
         uses: actions/cache@v4
         with:
-          path: downloads
-          key: downloads-scarthgap-weston-${{ hashFiles('meta-vscode/recipes-devtools/vscode/*.bb') }}
-          restore-keys: |
-            downloads-scarthgap-weston-
-            downloads-scarthgap-
+          path: poky/build/downloads
+          key: qemu-runtime-downloads-scarthgap-${{ hashFiles('meta-vscode/recipes-devtools/vscode/*.bb') }}
 
       - name: Configure build
         run: |
@@ -116,8 +108,11 @@ jobs:
           PARALLEL_MAKE = "-j 2"
           CONF_VERSION = "2"
           PACKAGE_CLASSES ?= "package_rpm"
-          SSTATE_DIR ?= "${TOPDIR}/../../sstate-cache"
-          DL_DIR    ?= "${TOPDIR}/../../downloads"
+          # Leave SSTATE_DIR + DL_DIR at their bitbake defaults
+          # (${TOPDIR}/sstate-cache + ${TOPDIR}/downloads). Custom
+          # overrides made bitbake's "fetched" stamps point at one
+          # location and do_unpack look in another when the GHA cache
+          # got partially populated from a previous workflow.
 
           # GHA hosted runners only have ~30 GB free after the disk
           # cleanup step; the full Weston image with vscode pulled in
