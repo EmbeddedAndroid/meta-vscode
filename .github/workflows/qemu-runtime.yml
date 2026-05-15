@@ -159,6 +159,21 @@ jobs:
           # both builds the image AND runs the tests.
           bitbake core-image-weston
 
+      - name: Show per-task logs from any failed recipe
+        if: failure()
+        run: |
+          # When bitbake fails, the underlying tool's stderr is captured
+          # at tmp/work/<arch>/<recipe>/<ver>/temp/log.do_<task>.<pid>.
+          # Dump every such log that's recent so the failing tool's
+          # actual error reaches the CI output.
+          find poky/build/tmp/work -path '*/temp/log.do_*' \
+              -newer poky/build/conf/local.conf 2>/dev/null \
+          | while read -r f; do
+              echo "==== $f ===="
+              tail -200 "$f"
+              echo
+            done
+
       - name: Surface test results
         if: always()
         run: |
