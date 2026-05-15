@@ -39,10 +39,15 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
                       /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-                      "$AGENT_TOOLSDIRECTORY"
+                      "$AGENT_TOOLSDIRECTORY" \
+                      /usr/local/.ghcup \
+                      /opt/hostedtoolcache/*
           sudo apt-get autoremove --purge -y \
             azure-cli google-chrome-stable firefox powershell mongodb-* \
-            mysql-* postgresql-* || true
+            mysql-* postgresql-* snapd || true
+          # Drop docker images that ship preloaded on the runner; they
+          # eat ~10 GB on /var/lib/docker by default.
+          sudo docker image prune -af 2>/dev/null || true
           df -h
 
       - name: Install Yocto host + qemu deps
@@ -113,6 +118,14 @@ jobs:
           PACKAGE_CLASSES ?= "package_rpm"
           SSTATE_DIR ?= "${TOPDIR}/../../sstate-cache"
           DL_DIR    ?= "${TOPDIR}/../../downloads"
+
+          # GHA hosted runners only have ~30 GB free after the disk
+          # cleanup step; the full Weston image with vscode pulled in
+          # easily blows past that without rm_work, especially on
+          # do_unpack of the 200 MB VSCode tarball deep into the
+          # build. rm_work scrubs each recipe's workdir after
+          # do_package, reclaiming 5-15 GB.
+          INHERIT += "rm_work"
 
           # Weston + ssh + VSCode + the launcher into the image.
           IMAGE_INSTALL:append = " vscode vscode-weston-launcher wayland-utils"
