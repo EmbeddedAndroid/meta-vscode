@@ -51,14 +51,30 @@ jobs:
 
       - name: Clone poky
         run: |
-          if [ ! -d poky/.git ]; then
+          # When the cache restores an older poky and upstream has since
+          # rebased the release branch (scarthgap has done this), a plain
+          # `fetch ... ref:remote-ref` refuses the non-fast-forward update
+          # and the job dies before bitbake even starts. Force-refspec
+          # (`+ref`) makes the fetch overwrite the local tracking ref;
+          # any harder breakage (corrupt cache, repository moved) falls
+          # back to a clean re-clone.
+          set -eo pipefail
+          clone_fresh() {
+            rm -rf poky
             git clone --depth 1 --branch ${{ matrix.poky_branch }} \
               https://git.yoctoproject.org/poky poky
+          }
+          if [ ! -d poky/.git ]; then
+            clone_fresh
           else
-            git -C poky fetch --depth 1 origin \
-              ${{ matrix.poky_branch }}:refs/remotes/origin/${{ matrix.poky_branch }}
-            git -C poky checkout -B ${{ matrix.poky_branch }} \
-              refs/remotes/origin/${{ matrix.poky_branch }}
+            if ! git -C poky fetch --depth 1 origin \
+                "+${{ matrix.poky_branch }}:refs/remotes/origin/${{ matrix.poky_branch }}"; then
+              echo "fetch failed; falling back to fresh clone"
+              clone_fresh
+            else
+              git -C poky checkout -B ${{ matrix.poky_branch }} \
+                refs/remotes/origin/${{ matrix.poky_branch }}
+            fi
           fi
 
       - name: Install Yocto host dependencies
