@@ -11,7 +11,7 @@ HOMEPAGE = "https://code.visualstudio.com/"
 # We pin LIC_FILES_CHKSUM to LICENSES.chromium.html since it's the most
 # stable artefact across versions and exists in every architecture's tarball.
 LICENSE = "Proprietary"
-LIC_FILES_CHKSUM = "file://LICENSES.chromium.html;md5=cfa5de8d0264d369c26a42ca85a40c86"
+LIC_FILES_CHKSUM = "file://LICENSES.chromium.html;md5=acdffd0ca8106d0b6e9c22eaf16acaef"
 
 # Only the three Linux arches Microsoft actually ships pre-built binaries for.
 # riscv64 / mips / etc users have to build from source (out of scope for this
@@ -33,16 +33,16 @@ VSCODE_ARCH ?= "${@get_vscode_arch(d)}"
 # the version means re-resolving these via
 # `curl -sLI https://update.code.visualstudio.com/latest/linux-$arch/stable`
 # and copying the timestamp out of the Location header.
-GIT_SHA = "6a44c352bd24569c417e530095901b649960f9f8"
-TIMESTAMP-arm64 = "1780481475"
-TIMESTAMP-armhf = "1780481460"
-TIMESTAMP-x64   = "1780481459"
+GIT_SHA = "645f29cc3176500b4b5762ba887cf2a7f0ffdf2c"
+TIMESTAMP-arm64 = "1788901921"
+TIMESTAMP-armhf = "1788901805"
+TIMESTAMP-x64   = "1788901890"
 
 SRC_URI = "https://vscode.download.prss.microsoft.com/dbazure/download/stable/${GIT_SHA}/code-stable-${VSCODE_ARCH}-${TIMESTAMP-${VSCODE_ARCH}}.tar.gz;name=vscode-${VSCODE_ARCH}"
 
-SRC_URI[vscode-x64.sha256sum]   = "2fdef947717befd2e06854cbe01e99b4898f7752f25e12269c38023e63b93c8f"
-SRC_URI[vscode-arm64.sha256sum] = "8dc142ebaf162808e5623bb7dd123aa6800a9e19b77cbd613b5e9a954c23c2fe"
-SRC_URI[vscode-armhf.sha256sum] = "2eaa1f9e766277f2349554f2842ef21c3f85c73e1d481c4a27c9fe969daeb9c4"
+SRC_URI[vscode-x64.sha256sum]   = "8871d637292568e34c2d27daa5320a3b3c805f41f94014dfceafbe6134187fce"
+SRC_URI[vscode-arm64.sha256sum] = "e6ae2a88078fadc78011c4bdda70c59660b5fe242b4aab341285560779c52313"
+SRC_URI[vscode-armhf.sha256sum] = "5d965b99a1948f4764c13397028ed6f4bd7cd7918e8211e196da0e01fb8d0e38"
 
 # Styhead+ introduced UNPACKDIR as the directory do_unpack writes to,
 # distinct from WORKDIR which is reserved for build artefacts. We have
