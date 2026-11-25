@@ -33,16 +33,16 @@ VSCODE_ARCH ?= "${@get_vscode_arch(d)}"
 # the version means re-resolving these via
 # `curl -sLI https://update.code.visualstudio.com/latest/linux-$arch/stable`
 # and copying the timestamp out of the Location header.
-GIT_SHA = "07f806f999227108933c2e30515b26eecc1fda74"
-TIMESTAMP-arm64 = "1790759311"
-TIMESTAMP-armhf = "1790759300"
-TIMESTAMP-x64   = "1790759436"
+GIT_SHA = "661626d0e72f97806550790a98fb87116c9db825"
+TIMESTAMP-arm64 = "1795525818"
+TIMESTAMP-armhf = "1795525562"
+TIMESTAMP-x64   = "1795525921"
 
 SRC_URI = "https://vscode.download.prss.microsoft.com/dbazure/download/stable/${GIT_SHA}/code-stable-${VSCODE_ARCH}-${TIMESTAMP-${VSCODE_ARCH}}.tar.gz;name=vscode-${VSCODE_ARCH}"
 
-SRC_URI[vscode-x64.sha256sum]   = "d32031e9e213d59532af3cf32fcb8b357a1cdd10417967b4f5b5ba30436dc0dc"
-SRC_URI[vscode-arm64.sha256sum] = "9609a7655c4bc2a101b343ff22aa91f6678b46d9565b914c0608bd7f2e577fa6"
-SRC_URI[vscode-armhf.sha256sum] = "181edbf015e73331f0006d8de02872a5eb7490f54a3832cf699c4b2a702a26dc"
+SRC_URI[vscode-x64.sha256sum]   = "7acdaf01a1d7a27c55828156ec3fdbe75b8e0809070fecd10de022c4982a0f16"
+SRC_URI[vscode-arm64.sha256sum] = "fb3dddbe4eae3561c50c8ac13b5e99b85815b8a3e53c7212d1c8c116d0e4e97e"
+SRC_URI[vscode-armhf.sha256sum] = "1a46c242a4ff1d8e852c4aa28af547b4829a3bf14c5c445cd00caa9edcdc513f"
 
 # Styhead+ introduced UNPACKDIR as the directory do_unpack writes to,
 # distinct from WORKDIR which is reserved for build artefacts. We have
